@@ -1,0 +1,149 @@
+<h1>How to use the environment for specific HTTP services</h1>
+<img alt="Post Cover" src="http://localhost:8000/post-covers/data-service-article.png" />
+<p>Have you ever needed to switch your backend endpoints before building for production? Or has it been problematic to change the endpoint of a resource? It sure happened to me, so I am going to show you how I dealt with this issue. If you just want to browse the final code, you can check it <a href="https://stackblitz.com/edit/specific-data-services-swqehm">here</a>.</p>
+<h2>What is the problem?</h2>
+<p>In our code base we have a general data service, that slightly abstracts the HttpClientService provided by Angular. This data service allows us to not worry about the backend endpoint --aside from development and production, we have multiple backends-- and the default content type. But from time to time we refactor the endpoint of a specific resource, for example we go from <code>post</code> to <code>posts</code>. What happens next? Since we are using a general data service, our components and services directly add the resource path:
+<code>this._dataService.getAll&lt;Post[]&gt;(&#39;post&#39;)</code>
+Now we have to track down every instance that calls this resource. But we cannot use the IDE&#39;s refactoring tools, since we are talking about plain strings. Not only that but there are multiple cases we need to search:</p>
+<ul>
+<li><code>&#39;post</code>, with only one &#39; because we might have `&#39;post/paginated&#39;</li>
+<li><code>`post</code>, because we might use both &#39; and ` to type our strings</li>
+<li><code>&quot;post</code>, for the same reason
+And hope we always type it and never get the path from some other call.
+This process is time-consuming, error prone, and hard to automate. So...</li>
+</ul>
+<h2>What do we want?</h2>
+<p>First, we want to use the environment files to get the endpoints. With this approach we can switch environment files, using angular.json&#39;s replace field, for all the stages of our project --development, test, staging, production, etc.
+Second, we want to abstract a general data service, that gets the backend endpoint, into several specific services, that add the resource path. Whenever in the future we want to refactor a resource, we only need to update the path in this specific service. </p>
+<h2>First step: Inject the environment into the data service</h2>
+<p>An Angular project usually has different environment files, one for development and one for production, for example. </p>
+<pre><code><span>// environment.ts</span>
+<span>export</span><span>const</span> environment = {
+ production: <span>false</span>,
+ baseUrl: <span>'http://localhost:3333'</span>
+};
+</code></pre><pre><code><span>// environment.prod.ts</span>
+<span>export</span><span>const</span> environment = {
+ production: <span>true</span>,
+ baseUrl: <span>'https://jsonplaceholder.typicode.com'</span>
+};
+</code></pre><p>And we want to use the <code>baseUrl</code> in our general data service. We could directly import the environment file into the data service, but we could end up with deeply nested imports (i.e.: <code>../../../../../app/environments/environment</code>). Alternatively, if we are using lazy loaded modules or the Nx monorepo file structure, we want to keep the project structure separated. </p>
+<p>Let us start from the data service. It should have an <code>apiUrl</code> with the backend endpoint, which comes from the environment.</p>
+<pre><code><span>// data.service.ts</span>
+@Injectable({
+ providedIn: <span>'root'</span>
+})
+<span>export</span><span>class</span> DataService {
+ <span>public</span> apiUrl: <span>string</span>;
+ <span>constructor</span>(config: EnvironmentConfig) {
+ <span>this</span>.apiUrl = <span>`<span>${config.environment.baseUrl}</span>`</span>;
+ }
+}
+</code></pre><p>As we mentioned, we want to avoid a direct import of the environment file. The option we went with is injecting it.</p>
+<pre><code><span>// data.service.ts</span>
+<span>@Injectable({
+ providedIn: <span>'root'</span>
+})</span>
+export <span><span>class</span><span>DataService</span></span>{
+ <span>public</span> apiUrl: string;
+ <span>constructor</span>(<span>@Inject(ENV_CONFIG)</span><span>private</span> config: EnvironmentConfig) {
+ <span>this</span>.apiUrl = `${config.environment.baseUrl}`;
+ }
+}
+</code></pre><p>Where <code>EnvironmentConfig</code> has the fields we are interested in from the environment.</p>
+<pre><code><span>// environment-config.interface.ts</span>
+<span>export</span><span>interface</span> EnvironmentConfig {
+ environment: {
+ baseUrl: <span>string</span>;
+ };
+}
+<span>export</span><span>const</span> ENV_CONFIG = <span>new</span> InjectionToken&lt;EnvironmentConfig&gt;(<span>'EnvironmentConfig'</span>);
+</code></pre><p>To be able to inject the configuration, we need to declare it as a provider in the module. We use the <code>forRoot</code> technique, returning a <code>ModuleWithProviders</code>.</p>
+<pre><code>http.module.ts
+@NgModule({
+<span> imports:</span> [CommonModule]
+})
+export class <span>HttpModule </span>{
+ static forRoot(config: EnvironmentConfig): <span>ModuleWithProviders </span>{
+ <span>return </span>{
+<span> ngModule:</span> HttpModule,
+<span> providers:</span> [
+ {
+<span> provide:</span> ENV_CONFIG,
+<span> useValue:</span> config
+ }
+ ]
+ };
+ }
+}
+</code></pre><p>And finally, in the application module, which resides in the same root folder as the environment files, we import <code>HttpModule</code> using the <code>forRoot</code> function we implemented.</p>
+<pre><code><span>// app.module.ts</span>
+<span>@NgModule</span>({
+ <span>declarations</span>: [
+ AppComponent
+ ],
+ <span>imports</span>: [
+ BrowserModule,
+ FormsModule,
+ HttpClientModule,
+ AppRoutingModule,
+ HttpModule.forRoot({ environment })
+ ],
+ <span>providers</span>: [],
+ <span>bootstrap</span>: [AppComponent]
+})
+export class AppModule { }
+</code></pre><p>If now we were to inject the data service in a component and check its <code>apiUrl</code> attribute we would get the values from the environment file.</p>
+<h2>Second step: Use specific services</h2>
+<p>This step is quite intuitive. We only need to inject the data service into our domain specific services. </p>
+<pre><code><span>// posts-req.service.ts</span>
+<span>@Injectable({
+ providedIn: <span>'root'</span>
+})</span>
+export <span><span>class</span><span>PostsReqService</span></span>{
+ <span>constructor</span>(<span>private</span><span>data</span>: DataService) {}
+}
+</code></pre><p>If we choose to, we can implement generic HTTP calls in our data service, and then we specify them in our resource data service.</p>
+<pre><code><span>// data.service.ts</span>
+<span>@Injectable({
+ providedIn: <span>'root'</span>
+})</span>
+export <span><span>class</span><span>DataService</span></span>{
+ <span>public</span> apiUrl: string;
+ <span>constructor</span>(<span>@Inject(ENV_CONFIG)</span><span>private</span> config: EnvironmentConfig, <span>private</span> http: HttpClient) {
+ <span>this</span>.apiUrl = `${config.environment.baseUrl}`;
+ }
+ getAll&lt;T&gt;(path: string): Observable&lt;T&gt; {
+ <span>return</span><span>this</span>.http.<span>get</span>&lt;T&gt;(`${<span>this</span>.apiUrl}/${path}`);
+ }
+}
+</code></pre><pre><code><span>// posts-req.service.ts</span>
+<span>@Injectable({
+ providedIn: <span>'root'</span>
+})</span>
+export <span><span>class</span><span>PostsReqService</span></span>{
+ <span>constructor</span>(<span>private</span><span>data</span>: DataService) {}
+ getAllPosts(limit: number): Observable&lt;Post[]&gt; {
+ <span>return</span><span>this</span>.<span>data</span>
+ .getAll&lt;Post[]&gt;(`posts`)
+ .pipe(map(ret =&gt; ret.slice(<span>0</span>, limit)));
+ }
+}
+</code></pre><p>With this usage we abstract from the components the backend endpoint --used by the general data service, the resource endpoint --used by the specific resource service, and the typing of each call --defined by each call in the specific resource service.</p>
+<pre><code><span>// posts.component.ts</span>
+<span>@Component({
+ selector: <span>'app-posts'</span>,
+ templateUrl: <span>'./posts.component.html'</span>,
+ styleUrls: [<span>'./posts.component.css'</span>]
+})</span>
+export <span><span>class</span><span>PostsComponent</span><span>implements</span><span>OnInit</span></span>{
+ posts$: Observable&lt;Post[]&gt;;
+ <span>constructor</span>(<span>private</span> postsReqService: PostsReqService) {}
+ ngOnInit() {
+ <span>this</span>.posts$ = <span>this</span>.postsReqService.getAllPosts(<span>10</span>);
+ }
+}
+</code></pre><h2>Conclusion</h2>
+<p>You can see all the code in this <a href="https://stackblitz.com/edit/specific-data-services-swqehm">live example</a>.
+This approach can be used for different project structures and for lazy loaded modules, so you should be able to easily accommodate it to your needs.
+I hope this article is of use to you. If there is some mistake or you want to add anything, you can leave a comment in the <a href="https://medium.com/angular-in-depth/how-to-use-the-environment-for-specific-http-services-d1f3c0eae9d5?source=friends_link&amp;sk=60cf708507d3b471975000700326ba0e">Medium version</a> 😀.</p>

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "1fa7dfa9",
+    "title": "How to Use the Environment for Specific HTTP Services",
+    "coverUrl": "http://localhost:8000/post-covers/data-service-article.png",
+    "labels": ["Angular", "TypeScript", "Programming", "Web Development"]
+  },
+  {
+    "id": "e6308bab",
+    "title": "A Try/Catch Decorator to Stylize Your Code",
+    "coverUrl": "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80",
+    "labels": ["JavaScript", "TypeScript", "Error Handling", "Programming", "Web Development"]
+  }
+]

@@ -1,0 +1,85 @@
+<h1 id="a-try-catch-decorator-to-stylize-your-code">A Try/Catch Decorator to Stylize Your Code</h1>
+<img alt="Post Cover" src="https://images.unsplash.com/photo-1517694712202-14dd9538aa97?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80" />
+<p>Applications have errors. Sometimes these are our fault, like a null reference, or they are out of our domain, like a faulty connection from the user’s side. But regardless from where they come, we should treat them so our application gracefully continues.</p>
+<p>To treat errors in ECMA/TypeScript we surround our code with a <code>try/catch</code> block or we append <code>.catch()</code> to a Promise. These can quickly generate nested code and boilerplate, specially if we need to deal with many types of errors.</p>
+<h2 id="decorators">Decorators</h2>
+<p>Decorators, as its name indicates, decorate our code (functions, classes) to add information to it or to modify its behavior. Decorators are a <a href="https://github.com/tc39/proposal-decorators">stage 2 proposal</a> for JavaScript and are available as an experimental feature of TypeScript.
+To enable experimental support for decorators, you must enable the <code>experimentalDecorators</code> compiler option in your <code>tsconfig.json</code>:  </p>
+<pre><code>{
+  <span class="hljs-attr">"compilerOptions"</span>: {
+    <span class="hljs-attr">"target"</span>: <span class="hljs-string">"ES6"</span>,
+    <span class="hljs-attr">"experimentalDecorators"</span>: <span class="hljs-literal">true</span>
+  }
+}
+</code></pre><p>The basic structure of a <em>decorator factory</em>, simply a function that returns the expression that will be called by the decorator at runtime, is the following:  </p>
+<pre><code><span class="hljs-keyword">const</span> <span class="hljs-type">Log</span> = (msg: <span class="hljs-built_in">string</span>): <span class="hljs-built_in">any</span> =&gt; {
+  <span class="hljs-keyword">return</span> (target: <span class="hljs-built_in">any</span>, propertyKey: <span class="hljs-built_in">string</span>, descriptor: <span class="hljs-type">PropertyDescriptor</span>) =&gt; {
+    // target: class constructor <span class="hljs-keyword">or</span> current <span class="hljs-keyword">object</span>'s prototype
+    // propertyKey: name <span class="hljs-keyword">of</span> the decorated <span class="hljs-keyword">method</span>
+    // descriptor: property descriptor <span class="hljs-keyword">of</span> the <span class="hljs-keyword">method</span>
+    modify class <span class="hljs-keyword">or</span> <span class="hljs-keyword">method</span>...
+  }
+}
+</code></pre><p>Then we would use it as follows:  </p>
+<pre><code><span class="hljs-meta">@Log(<span class="hljs-meta-string">'decorating class'</span>)</span>
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">Test</span> </span>{
+  <span class="hljs-meta">@Log(<span class="hljs-meta-string">'decorate method'</span>)</span>
+  testMethod() {}
+}
+</code></pre><h2 id="implementation">Implementation</h2>
+<p>Now that we know what a decorator is and how it is implemented, let us code our own decorator.</p>
+<p>What we want to program is:</p>
+<ul>
+<li>A decorator that catches a specific error</li>
+<li>A decorator that catches all the errors</li>
+<li>Apply these decorators to a class or a method</li>
+</ul>
+<h3 id="method-decorator">Method Decorator</h3>
+<iframe srcdoc="<script src='https://gist.github.com/omirobarcelo/e128f15a335fb0d73413d58750e906ee.js'></script>"></iframe>
+<p>There is a lot to unpack here so let’s go line by line.</p>
+<p>[1]<br>Definition for the handler function that we need to pass to the decorator. The function receives the caught error and the context of the function (<code>this</code>).</p>
+<p>[3]<br>The decorator&#39;s signature. The <code>Catch</code> decorator needs the specific error to catch and the function that will be executed to handle the error.</p>
+<p>[5–6]<br><code>descriptor.value</code> holds a reference to the original decorated method. We save this reference for later use.</p>
+<p>[9]<br>We overwrite the decorated method with a new function.</p>
+<p>[10, 23-25]<br>Our surrounding <code>try/catch</code> block.</p>
+<p>[11]<br>The execution and result of the original decorated method. If an error is thrown, it will be caught by the aforementioned <code>try/catch</code> block.</p>
+<p>[13–19]<br>We check if the decorated method is asynchronous (AKA returns a Promise). If so, we return the result of the original method and we add a <code>.catch</code> that handles the error, if there is one.</p>
+<p>[21–22]<br>If the decorated method is synchronous, we return its result.</p>
+<p>[27–28]<br>We return the new descriptor, that is the original method surrounded by a <code>try/catch</code> and adding <code>.catch</code> if it is asynchronous.</p>
+<p>[32]<br>With the implementation of the <code>Catch</code> decorator, which is just a function that returns a decorator function, we can define <code>CatchAll</code> simply as <code>Catch</code> but already specifying that it should catch any error.</p>
+<p>[34–44]<br>The error handler function. We confirm that the passed function is indeed a function and that the error is of the specified type. If so, we execute the given function. Otherwise we throw the error again to forward to the next decorator or to the decorated method.</p>
+<h3>Class Decorator</h3>
+<p>If we decorate a class, we want to go through all of the class’ methods and decorate them.</p>
+<p>If we decorate a class, we can use the <code>target</code> to obtain all of its (non static) methods. Then we can overwrite those with the same approach as before.</p>
+<iframe srcdoc="<script src='https://gist.github.com/omirobarcelo/6fa0c7fe963bf225bb814341c0c9ff94.js'></script>"></iframe>
+<p>[4–7]<br>If <code>descriptor</code> is defined, then we are decorating a method. We generate a descriptor as before and return it.</p>
+<p>[8–17]<br>Otherwise, we are decorating a class. In this case, <code>target</code> is the class constructor and we can access its prototype. We use <code>Reflect.ownKeys(target.prototype)</code> to obtain the name of all its (non static) methods, including the constructor, so we need to filter it out.<br>Then we get the method’s descriptor, confirm it is a method, and generate the new descriptor as before. We also need to redefine the modified class property.</p>
+<p>[21–50]<br>The <code>_generateDescriptor</code> function does the exact same thing it was doing previously in the <code>Catch</code> decorator.</p>
+<h2>Conclusion</h2>
+<p>We now have programmed a decorator that surrounds our methods with a <code>try/catch</code> block that will handle the errors we define.</p>
+<p>With this decorator we can transform this: </p>
+<pre><code><span><span>class</span><span>Messenger</span> {</span>
+ getMessages() {
+ <span>try</span> {
+ ...
+ } <span>catch</span>(err) {
+ <span>if</span> (err <span>instanceof</span> TypeError) {
+ <span>console</span>.log(<span>this</span>, err);
+ } <span>else</span> {
+ <span>throw</span> err;
+ }
+ }
+ }
+ <span>//</span><span>and</span> the same surrounding block <span>for</span> all the <span><span>class</span><span>functions</span></span>
+}
+</code></pre><p>To: </p>
+<pre><code>@Catch(TypeError, <span><span>(err, ctx)</span> =&gt;</span><span>console</span>.log(ctx, err))
+<span><span>class</span><span>Messenger</span> {</span>
+ getMessages() {
+ ...
+ }
+ <span>//</span> all the other functions
+}
+</code></pre><p>Thank you for reading my article! I hope you learned something new from it or it can help you making your code cleaner.
+If you do not want to implement the decorator yourself, you can install this <a href="https://www.npmjs.com/package/@magna_shogun/catch-decorator">NPM package</a>. You can also find the source code if you want to see everything together.</p>
+<p>The <a href="https://ruwix.com/online-rubiks-cube-solver-program/">online Rubik's Cube solver program</a> will help you find the solution for your unsolved puzzle.</p>
