@@ -1,6 +1,7 @@
-import { App, CorsBuilder } from '../deps.ts';
+import { App, Content, Context, CorsBuilder, HttpError } from '../deps.ts';
 import { Log } from './middlewares/log.middleware.ts';
 import { PostsArea } from './areas/posts/posts.area.ts';
+import { Logger } from './common/utils/logger.ts';
 
 const app = new App({
   areas: [PostsArea],
@@ -16,6 +17,13 @@ app.useCors(
 
 app.useStatic({
   root: `${Deno.cwd()}/public`
+});
+
+// Global error handler
+app.error((context: Context<any>, error: Error) => {
+  Logger.error(error.message, error.stack, 'App');
+  context.response.result = Content('Unexpected Server Error', (error as HttpError).httpCode || 500);
+  context.response.setImmediately();
 });
 
 app.listen();
