@@ -1,6 +1,6 @@
 import { join, normalize } from '../../../deps.ts';
 import { readJson } from '../../../deps.ts';
-import { Response, serveFile } from '../../../deps.ts';
+import { Request, Response, serveFile } from '../../../deps.ts';
 import { Post } from './interfaces/post.interface.ts';
 
 export class PostsService {
@@ -22,8 +22,8 @@ export class PostsService {
    * @param id 
    * @param req Request that serves the file
    */
-  async getPost(id: string, req: any): Promise<Response> {
+  async getPost(id: string, req: Request): Promise<Response> {
     const postLocations = (await readJson(`${this.CWD}/post_loc.json`)) as { [id: string]: string };
-    return serveFile(req, normalize(join(this.CWD, postLocations[id])));
+    return serveFile(req.serverRequest as any, normalize(join(this.CWD, postLocations[id])));
   }
 }
