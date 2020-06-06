@@ -26,4 +26,5 @@ app.error((context: Context<any>, error: Error) => {
   context.response.setImmediately();
 });
 
-app.listen();
+const PORT = Deno.env.get('PORT') || '8000';
+app.listen(`:${PORT}`);
